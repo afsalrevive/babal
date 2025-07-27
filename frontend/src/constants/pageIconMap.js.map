@@ -1,1 +1,0 @@
-{"version":3,"file":"pageIconMap.js","sourceRoot":"","sources":["pageIconMap.ts"],"names":[],"mappings":"AAAA,OAAO,EACH,WAAW,EACX,aAAa,EACb,eAAe,EACf,eAAe,EAChB,MAAM,mBAAmB,CAAA;AAE1B,MAAM,CAAC,MAAM,WAAW,GAAwB;IAC9C,SAAS,EAAE,WAAW;IACtB,KAAK,EAAE,aAAa;IACpB,QAAQ,EAAE,eAAe;IACzB,OAAO,EAAE,eAAe;CACzB,CAAA"}

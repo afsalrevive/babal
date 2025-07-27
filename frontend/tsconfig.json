@@ -1,10 +1,9 @@
 {
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
-    "composite": true,
-    "declaration": true,              // ✅ must be true for composite
-    "emitDeclarationOnly": true,      // ✅ only emit .d.ts files
-    "declarationDir": "types",        // ✅ avoid overwriting .vue files in src
+    "composite": false,             // You don’t need this unless using Project References
+    "declaration": false,           // Disable .d.ts output
+    "emitDeclarationOnly": false,   // Not needed
     "skipLibCheck": true,
     "incremental": true,
     "module": "ESNext",
@@ -13,9 +12,9 @@
     "lib": ["ESNext", "DOM"],
     "baseUrl": ".",
     "paths": { "@/*": ["src/*"] },
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "noEmit": true                  // ✅ Prevent any file output when running tsc
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "env.d.ts"],
-  "exclude": ["node_modules", "dist"],
-  "references": [{ "path": "./tsconfig.app.json" }]
+  "exclude": ["node_modules", "dist", "types"]
 }
