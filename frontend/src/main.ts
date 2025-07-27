@@ -1,4 +1,3 @@
-// src/main.ts
 import { useAuthStore } from '@/stores/auth'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -13,19 +12,20 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 
+// set baseURL for axios
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || 'https://app.babaltheqa.com/api';
+
 // initialize auth store (set Axios header if token exists)
 const auth = useAuthStore()
 auth.init().catch((error) => {
-  console.error('Auth initialization failed:', error);
-}).finally(() => {
-  app.mount('#app');
-});
+  console.error('Auth initialization failed:', error)
+})
 
-// Add global error handler
+// always mount the app
+app.mount('#app')
+
+// global error handler
 app.config.errorHandler = (err, vm, info) => {
-  console.error('Global error:', err);
-  router.push('/not-found');
-};
-
-// set baseURL for axios
-axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+  console.error('Global error:', err)
+  router.push('/not-found')
+}

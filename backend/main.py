@@ -35,13 +35,18 @@ def create_app():
 
     # CORS
     CORS(app,
-         resources={ r"/api/*": {
-             "origins": "http://localhost:5173",
-             "supports_credentials": True,
-             "allow_headers": ["Authorization", "Content-Type"],
-             "expose_headers": ["Authorization"],
-             "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-         }}
+        resources={ r"/api/*": {
+            "origins": [
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://83.229.39.190:5173",  # add your public IP
+                "http://83.229.39.190"        # in case it's served without port 5173
+            ],
+            "supports_credentials": True,
+            "allow_headers": ["Authorization", "Content-Type"],
+            "expose_headers": ["Authorization"],
+            "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+        }}
     )
 
     # Extensions
@@ -102,6 +107,8 @@ def create_app():
 
     return app
 
+app = create_app()
+
 if __name__ == '__main__':
-    app = create_app()
-    app.run(host='::', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
+

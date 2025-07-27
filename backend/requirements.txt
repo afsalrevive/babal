@@ -1,0 +1,19 @@
+# Flask & Extensions
+Flask==2.3.3
+flask-restful==0.3.10
+flask-bcrypt==1.0.1
+flask-jwt-extended==4.6.0
+flask-login==0.6.3
+flask-cors==4.0.0
+flask-sqlalchemy==3.1.1
+
+# Templating / Background Tasks / Schema Validation / PDF
+Jinja2==3.1.3
+celery==5.3.6
+jsonschema==4.21.1
+fpdf==1.7.2
+pandas==2.2.2
+XlsxWriter==3.2.0
+
+# Optional: included by default in Python but can be pinned
+# logging is part of the standard library; no need to install separately

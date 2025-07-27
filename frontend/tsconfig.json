@@ -2,8 +2,9 @@
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "composite": true,
-    "noEmit": false,
-    "emitDeclarationOnly": true,
+    "declaration": true,              // ✅ must be true for composite
+    "emitDeclarationOnly": true,      // ✅ only emit .d.ts files
+    "declarationDir": "types",        // ✅ avoid overwriting .vue files in src
     "skipLibCheck": true,
     "incremental": true,
     "module": "ESNext",
