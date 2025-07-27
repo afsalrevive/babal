@@ -1,0 +1,854 @@
+<template>
+  <n-card>
+    <template #header>
+      <n-h2>Transaction Manager</n-h2>
+    </template>
+
+    <n-tabs
+      v-model:value="transactionType"
+      type="line"
+      animated
+      @update:value="onTabChange"
+      style="margin-bottom: 16px;"
+    >
+      <n-tab-pane v-for="tab in tabs" :key="tab" :name="tab" :tab="toSentenceCase(tab)" />
+    </n-tabs>
+
+    <n-space justify="space-between" wrap style="margin-bottom: 12px;">
+      <n-space>
+        <n-input v-model:value="searchQuery" placeholder="Search" clearable style="max-width: 300px;" />
+        <n-date-picker
+          v-model:value="dateRange"
+          type="daterange"
+          clearable
+          :default-value="defaultDateRange"
+          style="max-width: 300px;"
+        />
+        <n-button @click="exportExcel" type="primary" secondary>
+          <template #icon>
+            <n-icon><DocumentTextOutline /></n-icon>
+          </template>
+          Excel
+        </n-button>
+        <n-button @click="exportPDF" type="primary" secondary>
+          <template #icon>
+            <n-icon><DocumentTextOutline /></n-icon>
+          </template>
+          PDF
+        </n-button>
+      </n-space>
+      <n-button type="primary" @click="openAddModal">Add {{ toSentenceCase(transactionType) }}</n-button>
+    </n-space>
+
+    <n-data-table :columns="columns" :data="filteredTransactions" :loading="loading" striped />
+
+    <n-modal
+      v-model:show="modalVisible"
+      :key="`transaction-modal-${modalKey}`"
+      :teleported="false"
+      :title="modalTitle"
+      class="transaction-modal"
+      style="max-width: 90vw;"
+    >
+      <n-card class="modal-card">
+        <n-h3 style="margin-bottom: 12px;">{{ modalTitle }}</n-h3>
+        <n-form ref="formRef" :model="form" :rules="formRules">
+          <div class="responsive-form-grid">
+
+            <!-- Reference Number -->
+            <n-form-item label="Reference No">
+              <n-input v-model:value="form.ref_no" disabled />
+            </n-form-item>
+
+            <!-- Date -->
+            <n-form-item label="Date" prop="transaction_date">
+              <n-date-picker v-model:value="form.transaction_date" type="datetime" clearable />
+            </n-form-item>
+
+            <!-- Non-refund transaction fields -->
+            <template v-if="transactionType !== 'refund' && transactionType !== 'wallet_transfer'">
+              <n-form-item label="Entity Type" prop="entity_type">
+                <n-select 
+                  v-model:value="form.entity_type" 
+                  :options="entityTypeOptions" 
+                  @update:value="handleEntityTypeChange"
+                />
+              </n-form-item>
+
+              <n-form-item label="Entity Name" prop="entity_id">
+                <n-select
+                  v-model:value="form.entity_id"
+                  :options="entityOptions"
+                  :loading="entitiesLoading"
+                  filterable
+                  :disabled="!form.entity_type || form.entity_type === 'others'"
+                  placeholder="Select entity"
+                />
+              </n-form-item>
+            </template>
+
+            <!-- Wallet Transfer Fields -->
+            <template v-if="transactionType === 'wallet_transfer'">
+              <n-form-item label="From Entity Type" prop="from_entity_type">
+                <n-select 
+                  v-model:value="form.from_entity_type" 
+                  :options="entityTypeOptions" 
+                  @update:value="val => handleRefundEntityChange(val, 'from')"
+                />
+              </n-form-item>
+
+              <n-form-item 
+                v-if="form.from_entity_type && form.from_entity_type !== 'others'"
+                label="From Entity Name"
+                prop="from_entity_id"
+              >
+                <n-select
+                  v-model:value="form.from_entity_id"
+                  :options="entityOptions"
+                  :loading="entitiesLoading"
+                  filterable
+                  placeholder="Select entity"
+                />
+              </n-form-item>
+
+              <n-form-item label="To Entity Type" prop="to_entity_type">
+                <n-select 
+                  v-model:value="form.to_entity_type" 
+                  :options="entityTypeOptions" 
+                  @update:value="val => handleRefundEntityChange(val, 'to')"
+                />
+              </n-form-item>
+
+              <n-form-item 
+                v-if="form.to_entity_type && form.to_entity_type !== 'others'"
+                label="To Entity Name"
+                prop="to_entity_id"
+              >
+                <n-select
+                  v-model:value="form.to_entity_id"
+                  :options="entityOptions"
+                  :loading="entitiesLoading"
+                  filterable
+                  placeholder="Select entity"
+                />
+              </n-form-item>
+            </template>
+
+            <!-- Refund transaction fields -->
+            <template v-else-if="transactionType === 'refund'">
+              <n-form-item label="Refund Direction" prop="refund_direction">
+                <n-select
+                  v-model:value="form.refund_direction"
+                  :options="refundDirectionOptions"
+                />
+              </n-form-item>
+
+              <!-- Company to Entity -->
+              <template v-if="form.refund_direction === 'outgoing'">
+                <n-form-item label="To Entity Type" prop="to_entity_type">
+                  <n-select 
+                    v-model:value="form.to_entity_type" 
+                    :options="entityTypeOptions" 
+                    @update:value="val => handleRefundEntityChange(val, 'to')"
+                  />
+                </n-form-item>
+
+                <n-form-item 
+                  v-if="form.to_entity_type && form.to_entity_type !== 'others'"
+                  label="To Entity Name"
+                  prop="to_entity_id"
+                >
+                  <n-select
+                    v-model:value="form.to_entity_id"
+                    :options="entityOptions"
+                    :loading="entitiesLoading"
+                    filterable
+                    placeholder="Select entity"
+                  />
+                </n-form-item>
+
+                <n-form-item label="From Mode (Company)" prop="mode_for_from">
+                  <n-select
+                    v-model:value="form.mode_for_from"
+                    :options="companyRefundFromModeOptions"
+                    placeholder="Company pays via"
+                  />
+                </n-form-item>
+
+                <template v-if="form.mode_for_from && modeBalance !== null">
+                  <n-form-item label="Company Account">
+                    <n-p>Mode: {{ form.mode_for_from }} — Balance: ₹{{ modeBalance.toFixed(2) }}</n-p>
+                  </n-form-item>
+                </template>
+
+                <!-- Toggles for refund outgoing -->
+                <template v-if="form.to_entity_type">
+                  <!-- Customer/Partner -->
+                  <template v-if="['customer', 'partner'].includes(form.to_entity_type)">
+                    <n-form-item
+                      v-if="['cash', 'online'].includes(form.mode_for_from)"
+                      label="Deduct from Entity Account?"
+                    >
+                      <n-switch v-model:value="form.deduct_from_account" />
+                    </n-form-item>
+
+                    <n-form-item
+                      v-if="form.mode_for_from === 'service_availed'"
+                      label="Credit to Entity Account?"
+                    >
+                      <n-switch v-model:value="form.credit_to_account" />
+                    </n-form-item>
+                  </template>
+
+                  <!-- Agent -->
+                  <n-form-item
+                    v-if="form.to_entity_type === 'agent'"
+                    label="Credit Agent Account?"
+                  >
+                    <n-switch v-model:value="form.credit_to_account" />
+                  </n-form-item>
+
+                  <!-- Others -->
+                  <n-form-item v-if="form.to_entity_type === 'others'" label="Note">
+                    <n-alert type="info" :show-icon="false">
+                      Amount will be deducted directly from the selected company account.
+                    </n-alert>
+                  </n-form-item>
+                </template>
+              </template>
+
+              <!-- Entity to Company -->
+              <template v-else>
+                <n-form-item label="From Entity Type" prop="from_entity_type">
+                  <n-select 
+                    v-model:value="form.from_entity_type" 
+                    :options="entityTypeOptions" 
+                    @update:value="val => handleRefundEntityChange(val, 'from')"
+                  />
+                </n-form-item>
+
+                <n-form-item 
+                  v-if="form.from_entity_type && form.from_entity_type !== 'others'"
+                  label="From Entity Name"
+                  prop="from_entity_id"
+                >
+                  <n-select
+                    v-model:value="form.from_entity_id"
+                    :options="entityOptions"
+                    :loading="entitiesLoading"
+                    filterable
+                    placeholder="Select entity"
+                  />
+                </n-form-item>
+
+                <n-form-item
+                  v-if="form.from_entity_type && form.from_entity_type !== 'others'"
+                  label="From Mode (Entity)"
+                  prop="mode_for_from"
+                >
+                <n-select
+                  v-model:value="form.mode_for_from"
+                  :key="`mode-select-${form.from_entity_type}-${entityOptionsReady}`"
+                  :options="getEntityToCompanyFromModeOptions(form.from_entity_type)"
+                  :loading="!entityOptionsReady"
+                  placeholder="Entity pays via"
+                />
+                </n-form-item>
+
+                <n-form-item
+                  v-if="form.from_entity_type === 'others' || form.mode_for_from === 'cash'"
+                  label="To Mode (Company)"
+                  prop="mode_for_to"
+                >
+                  <n-select
+                    v-model:value="form.mode_for_to"
+                    :options="companyModeOptions"
+                    placeholder="Company receives via"
+                  />
+                </n-form-item>
+              </template>
+            </template>
+
+            <!-- Common fields -->
+            <n-form-item label="Particular" prop="particular_id">
+              <n-select 
+                v-model:value="form.particular_id" 
+                :options="particularOptions" 
+                :loading="particularsLoading" 
+                filterable 
+                clearable 
+              />
+            </n-form-item>
+
+            <n-form-item v-if="transactionType !== 'refund' && transactionType !== 'wallet_transfer'" label="Payment Type" prop="pay_type">
+                <n-select 
+                  v-model:value="form.pay_type" 
+                  :options="payTypeOptions" 
+                  clearable
+                  @update:value="handlePaymentTypeChange"
+                />
+            </n-form-item>
+
+            <!-- Wallet/Credit toggles -->
+            <template v-if="showWalletToggle">
+              <n-form-item :show-label="false">
+                <n-checkbox v-model:checked="toggleValue" :disabled="walletToggleDisabled">
+                  {{ toggleLabel }}
+                </n-checkbox>
+              </n-form-item>
+            </template>
+
+            <n-form-item v-if="transactionType !== 'refund' && transactionType !== 'wallet_transfer'" label="Mode of Payment" prop="mode">
+              <n-select
+                v-model:value="form.mode"
+                :options="nonRefundModeOptions"
+                @update:value="fetchCompanyBalance"
+              />
+            </n-form-item>
+
+            <n-form-item label="Amount" prop="amount">
+              <n-input-number 
+                v-model:value="form.amount" 
+                :min="0" 
+                :step="0.01" 
+                clearable 
+              />
+            </n-form-item>
+
+            <n-form-item label="Description" prop="description">
+              <n-input v-model:value="form.description" type="textarea" />
+            </n-form-item>
+          </div>
+        </n-form>
+
+        <template #footer>
+          <div v-if="form.mode && modeBalance !== null && transactionType !== 'wallet_transfer'">
+            <n-h5>Company Account</n-h5>
+            <p>Mode: {{ form.mode }} — Balance: ₹{{ modeBalance.toFixed(2) }}</p>
+          </div>
+          <!-- Updated Entity Info Display -->
+          <div v-if="selectedEntity">
+            <n-h5>Entity Info</n-h5>
+            <p>
+              Wallet: ₹{{ selectedEntity.wallet_balance ?? 'N/A' }}<br />
+              <template v-if="form.entity_type === 'customer'">
+                Credit Limit: ₹{{ selectedEntity.credit_limit ?? 'N/A' }}<br />
+                Credit Used: ₹{{ selectedEntity.credit_used ?? 'N/A' }}<br />
+              </template>
+              <template v-if="form.entity_type === 'agent'">
+                Credit Balance: ₹{{ selectedEntity.credit_balance ?? 'N/A' }}<br />
+              </template>
+            </p>
+          </div>
+          <n-space justify="end">
+            <n-button @click="closeModal">Cancel</n-button>
+            <n-button type="primary" @click="validateAndSubmit">Submit</n-button>
+          </n-space>
+        </template>
+      </n-card>
+    </n-modal>
+  </n-card>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted, nextTick, watch, h } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import api from '@/api'
+import {
+  useMessage, NButton, NSpace, NForm, NFormItem, NInput, NInputNumber, NDataTable, NModal,
+  NCard, NTabs, NTabPane, NIcon, NDatePicker, NSelect, NCheckbox, NH2, NH3, NH5, NP, NAlert, NSwitch
+} from 'naive-ui'
+import { DocumentTextOutline } from '@vicons/ionicons5'
+
+// ---- ROUTING AND STATE ----
+const router = useRouter()
+const route = useRoute()
+const message = useMessage()
+const tabs = ['payment', 'receipt', 'refund', 'wallet_transfer']
+const transactionType = ref<'payment' | 'receipt' | 'refund' | 'wallet_transfer'>('payment')
+const searchQuery = ref('')
+const transactions = ref([])
+const loading = ref(false)
+const formRef = ref(null)
+const modalVisible = ref(false)
+const defaultFields = ref({})
+const modalKey = ref(0)
+const editingId = ref<number|null>(null)
+const fieldErrors = ref({})
+const modeBalance = ref<number|null>(null)
+const dateRange = ref<[number, number] | null>(null)
+const entitiesLoading = ref(false)
+const particularsLoading = ref(false)
+const entityOptions = ref<any[]>([])
+const particulars = ref<any[]>([])
+const nextRefNo = ref('')
+const entityOptionsReady = ref(false)
+const refNoLoading = ref(false)
+
+// ---- CONSTANTS ----
+const defaultDateRange = computed(() => {
+  const end = Date.now()
+  const start = end - 7 * 24 * 60 * 60 * 1000
+  return [start, end] as [number, number]
+
+})
+const entityTypeOptions = [
+  { label: 'Customer', value: 'customer' }, { label: 'Agent', value: 'agent' },
+  { label: 'Partner', value: 'partner' }, { label: 'Others', value: 'others' }
+]
+const refundDirectionOptions = [
+  { label: 'Company → Entity', value: 'outgoing' }, { label: 'Entity → Company', value: 'incoming' }
+]
+const companyModeOptions = [
+  { label: 'Cash', value: 'cash' }, { label: 'Online', value: 'online' }
+]
+const nonRefundModeOptions = companyModeOptions
+
+const onTabChange = async (type: string) => {
+  if (tabs.includes(type)) {
+    transactionType.value = type as any
+    router.push({ name: 'TransactionPage', query: { type } })
+    await fetchSchema()
+    await fetchTransactions()
+  }
+}
+
+
+// ---- FORM MODEL & UTILITIES ----
+const defaultFormState = () => ({
+  ref_no: '', transaction_date: Date.now(), amount: null,
+  entity_type: null, entity_id: null, pay_type: null, mode: null,
+  description: '', particular_id: null,
+  refund_direction: null, to_entity_type: null, to_entity_id: null,
+  from_entity_type: null, from_entity_id: null,
+  mode_for_from: null, mode_for_to: null,
+  deduct_from_account: false, credit_to_account: false
+})
+const form = reactive(defaultFormState())
+const resetForm = () => Object.assign(form, defaultFormState())
+
+function toSentenceCase(str: string) {
+  return str.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+}
+function padNum(n: number, wid: number = 5) { return String(n).padStart(wid, '0') }
+function generatePlaceholder() {
+  const year = new Date().getFullYear()
+  const prefix = { payment: 'P', receipt: 'R', refund: 'E', wallet_transfer: 'W' }[transactionType.value]
+  const matches = transactions.value.filter(t => t.ref_no?.startsWith(`${year}/${prefix}/`))
+  const lastNum = matches.reduce((max, t) => Math.max(max, parseInt((t.ref_no || '').split('/')[2] || '0')), 0)
+  return `${year}/${prefix}/${padNum(lastNum + 1)}`
+}
+function assignRefNo(incoming?: string|null) {
+  const fallback = generatePlaceholder()
+  form.ref_no = incoming || fallback
+  nextRefNo.value = form.ref_no
+}
+
+// ---- COMPUTED PROPERTIES ----
+const selectedEntity = computed(() =>
+  entityOptions.value.find(e => e.value === form.entity_id)
+)
+const modalTitle = computed(() =>
+  `${editingId.value ? 'Edit' : 'Add'} ${toSentenceCase(transactionType.value)}`
+)
+const particularOptions = computed(() => particulars.value.map(p => ({ label: p.name, value: p.id })))
+const filteredTransactions = computed(() => {
+  if (!searchQuery.value) return transactions.value
+  const q = searchQuery.value.toLowerCase()
+  return transactions.value.filter((t: any) =>
+    Object.values(t).some((v: any) => String(v).toLowerCase().includes(q))
+  )
+})
+const companyRefundFromModeOptions = computed(() => {
+  const base = companyModeOptions.slice()
+  if (['customer', 'partner'].includes(form.to_entity_type)) {
+    base.push({ label: 'Service Availed', value: 'service_availed' })
+  }
+  return base
+})
+const payTypeOptions = computed(() => {
+  let types: string[] = []
+  const entityType = form.entity_type || 'customer'
+  if (transactionType.value === 'payment') {
+    if (['customer', 'partner'].includes(entityType)) types = ['cash_withdrawal', 'other_expense']
+    else if (entityType === 'agent') types = ['cash_deposit', 'other_expense']
+    else if (entityType === 'others') types = ['other_expense']
+  } else if (transactionType.value === 'receipt') {
+    if (['customer', 'partner'].includes(entityType)) types = ['cash_deposit', 'other_receipt']
+    else types = ['other_receipt']
+  } else if (transactionType.value === 'refund') types = ['refund']
+  return types.map(val => ({ label: toSentenceCase(val), value: val }))
+})
+const showWalletToggle = computed(() => {
+  if (transactionType.value === 'payment')
+    return form.pay_type === 'other_expense' && form.entity_type !== 'others'
+  if (transactionType.value === 'receipt')
+    return form.pay_type === 'other_receipt' && form.entity_type !== 'others'
+  return false
+})
+const walletToggleDisabled = computed(() => (
+  transactionType.value === 'payment' && form.entity_type === 'agent' && form.pay_type === 'cash_deposit'
+))
+const toggleValue = computed({
+  get() {
+    return transactionType.value === 'payment' ? form.deduct_from_account : form.credit_to_account
+  },
+  set(val) {
+    if (transactionType.value === 'payment') form.deduct_from_account = val
+    else form.credit_to_account = val
+  }
+})
+const toggleLabel = computed(() => {
+  if (transactionType.value === 'payment')
+    return form.entity_type === 'agent' ? 'Credit to wallet/credit?' : 'Deduct from wallet/credit?'
+  return form.entity_type === 'agent' ? 'Deduct from wallet/credit?' : 'Credit to wallet/credit?'
+})
+
+// ---- UTILITY: FORM RULES ----
+const formRules = computed(() => {
+  const rules: any = {
+    transaction_date: [{ required: true, message: 'Date is required' }],
+    amount: [{
+      required: true,
+      validator: (rule, value) => {
+        if (value === null || value === undefined || value === '') return new Error('Amount is required')
+        if (isNaN(Number(value))) return new Error('Amount must be a number')
+        if (Number(value) <= 0) return new Error('Amount must be > 0')
+        return true
+      }, trigger: ['input', 'blur', 'change']
+    }]
+  }
+  if (transactionType.value === 'refund') {
+    rules.refund_direction = [{ required: true, message: 'Refund direction required' }]
+    if (form.refund_direction === 'incoming') {
+      rules.from_entity_type = [{ required: true, message: 'From Entity Type required' }]
+      if (form.from_entity_type !== 'others') {
+        rules.from_entity_id = [{ required: true, message: 'From Entity required' }]
+        rules.mode_for_from = [{ required: true, message: 'From Mode required' }]
+      }
+      if (form.from_entity_type === 'others' || form.mode_for_from === 'cash')
+        rules.mode_for_to = [{ required: true, message: 'To Mode required' }]
+    } else {
+      rules.to_entity_type = [{ required: true, message: 'To Entity Type required' }]
+      rules.mode_for_from = [{ required: true, message: 'From Mode required' }]
+      if (form.to_entity_type !== 'others')
+        rules.to_entity_id = [{ required: true, message: 'To Entity required' }]
+    }
+  } else if (transactionType.value === 'wallet_transfer') {
+    rules.from_entity_type = [{ required: true, message: 'From Entity Type required' }]
+    rules.to_entity_type = [{ required: true, message: 'To Entity Type required' }]
+    if (form.from_entity_type !== 'others')
+      rules.from_entity_id = [{ required: true, message: 'From Entity required' }]
+    if (form.to_entity_type !== 'others')
+      rules.to_entity_id = [{ required: true, message: 'To Entity required' }]
+  } else {
+    rules.entity_type = [{ required: true, message: 'Entity type required' }]
+    rules.pay_type = [{ required: true, message: 'Payment type required' }]
+    rules.mode = [{ required: true, message: 'Mode required' }]
+    if (form.entity_type !== 'others')
+      rules.entity_id = [{
+        validator: (rule, value) => !value ? new Error('Entity required') : true,
+        trigger: ['blur', 'change']
+      }]
+  }
+  return rules
+})
+
+// ---- API CALL HELPERS ----
+const fetchCompanyBalance = async (mode: string) => {
+  try {
+    const { data } = await api.get(`/api/company_balance/${mode}`)
+    modeBalance.value = data.balance
+  } catch { modeBalance.value = null }
+}
+const loadEntities = async (type: string) => {
+  if (!type || type === 'others') { entityOptions.value = []; return }
+  entitiesLoading.value = true
+  try {
+    const res = await api.get(`/api/manage/${type}`)
+    entityOptions.value = res.data.map(e => ({
+      label: e.name, value: e.id, wallet_balance: e.wallet_balance,
+      credit_limit: e.credit_limit, credit_used: e.credit_used, credit_balance: e.credit_balance
+    }))
+  } catch { message.error('Failed to load entities') }
+  finally { entitiesLoading.value = false }
+}
+const loadParticulars = async () => {
+  particularsLoading.value = true
+  try {
+    const res = await api.get('/api/manage/particular')
+    particulars.value = res.data || []
+  } catch { message.error('Failed to load particulars') }
+  finally { particularsLoading.value = false }
+}
+const fetchSchema = async () => {
+  refNoLoading.value = true
+  try {
+    const { data } = await api.get(`/api/transactions/${transactionType.value}?mode=form`)
+    const parsed: any = {}
+    Object.entries(data.default_fields || {}).forEach(([k, v]) => {
+      parsed[k] = (typeof v === 'object' && v && 'value' in v) ? v.value : v
+      if (k.includes('date') && typeof parsed[k] === 'string') parsed[k] = +new Date(parsed[k])
+    })
+    defaultFields.value = parsed
+    assignRefNo(data.ref_no)
+  } catch (e: any) {
+    message.error(e?.response?.data?.error || 'Failed to load form schema')
+    defaultFields.value = {}
+    assignRefNo(null)
+  } finally { refNoLoading.value = false }
+}
+const fetchTransactions = async () => {
+  loading.value = true
+  try {
+    const params: any = { transaction_type: transactionType.value }
+    if (dateRange.value) {
+      const [start, end] = dateRange.value
+      params.start_date = new Date(start).toISOString().split('T')[0]
+      params.end_date = new Date(end).toISOString().split('T')[0]
+    }
+    const res = await api.get(`/api/transactions/${transactionType.value}`, { params })
+    transactions.value = res.data.transactions || []
+  } catch (e: any) {
+    message.error(e?.response?.data?.error || 'Failed to fetch transactions')
+    transactions.value = []
+  } finally { loading.value = false }
+}
+
+// ---- FORM/ENTITY HANDLERS ----
+const handleEntityTypeChange = async (value: string) => {
+  form.entity_type = value
+  form.entity_id = null; form.pay_type = null; form.mode = null
+  if (value !== 'others') await loadEntities(value); else entityOptions.value = []
+}
+const handleRefundEntityChange = async (value: string, dir: 'from'|'to') => {
+  const prefix = dir === 'to' ? 'to_' : 'from_'
+  form[`${prefix}entity_type`] = value; form[`${prefix}entity_id`] = null
+  form.credit_to_account = false; form.deduct_from_account = false
+  form.mode_for_from = null; form.mode_for_to = null
+  if (value !== 'others') await loadEntities(value); else entityOptions.value = []
+}
+const handlePaymentTypeChange = (value: string) => {
+  if (value === 'cash_withdrawal' && form.entity_type === 'agent') {
+    message.warning('Cash withdrawal not available for agents')
+    form.pay_type = null
+  }
+}
+// Return entity to company from mode options per entity
+const getEntityToCompanyFromModeOptions = (entityType: string) => {
+  if (!entityType) return []
+  if (['customer', 'partner', 'agent'].includes(entityType)) {
+    return [{ label: 'Cash', value: 'cash' }, { label: 'Wallet', value: 'wallet' }]
+  }
+  return [{ label: 'Cash', value: 'cash' }, { label: 'Online', value: 'online' }]
+}
+
+// ---- MODAL, SUBMIT, EXPORT ----
+const openAddModal = async (row: any = null) => {
+  modalKey.value++; entityOptionsReady.value = false
+  resetForm(); editingId.value = row?.id || null; fieldErrors.value = {}
+  if (row) {
+    Object.assign(form, row, row.extra_data || {})
+    if (row.timestamp) form.transaction_date = row.timestamp
+    else if (row.date) form.transaction_date = +new Date(row.date)
+    assignRefNo(row.ref_no)
+    if (transactionType.value === 'refund') {
+      await loadParticulars()
+      const entType = form.refund_direction === 'incoming' ? form.from_entity_type : form.to_entity_type
+      if (entType && entType !== 'others') await loadEntities(entType)
+      if (row.entity_id) {
+        if (form.refund_direction === 'incoming') form.from_entity_id = row.entity_id
+        else form.to_entity_id = row.entity_id
+      }
+      entityOptionsReady.value = true; modalVisible.value = true; return
+    }
+  } else {
+    Object.entries(defaultFields.value).forEach(([k, v]) => form[k] = (typeof v === 'object' && v && 'value' in v) ? v.value : v)
+    assignRefNo(null)
+    try {
+      const res = await api.get(`/api/transactions/${transactionType.value}?mode=form`)
+      assignRefNo(res.data.ref_no)
+    } catch {}
+  }
+  await loadParticulars()
+  if (form.entity_type && form.entity_type !== 'others') await loadEntities(form.entity_type)
+  entityOptionsReady.value = true; modalVisible.value = true
+}
+const closeModal = () => { modalVisible.value = false; editingId.value = null }
+const getRefundEntityDetails = () => {
+  const incoming = form.refund_direction === 'incoming'
+  const entType = incoming ? form.from_entity_type : form.to_entity_type
+  const entId   = entType === 'others' ? null : (incoming ? form.from_entity_id : form.to_entity_id)
+  return { entity_type: entType, entity_id: entId }
+}
+const validateAndSubmit = async () => {
+  try {
+    await formRef.value?.validate()
+    if (form.amount == null || isNaN(Number(form.amount)) || Number(form.amount) <= 0) {
+      message.error('Amount must be a positive number'); return
+    }
+    // Company balance logic
+    let newBalance = modeBalance.value
+    if (newBalance !== null && form.amount) {
+      let delta = 0
+      if (transactionType.value === 'payment')   delta = -form.amount
+      if (transactionType.value === 'receipt')   delta = +form.amount
+      if (transactionType.value === 'refund' && form.refund_direction === 'outgoing')  delta = -form.amount
+      if (transactionType.value === 'refund' && form.refund_direction === 'incoming')  delta = +form.amount
+      newBalance += delta
+      if (newBalance < 0 && !confirm(`This transaction will make company account negative (₹${newBalance.toFixed(2)}). Proceed anyway?`)) return
+    }
+    await submitTransaction()
+  } catch (errors) {
+    console.log('Form validation failed', errors)
+  }
+}
+const submitTransaction = async () => {
+  try {
+    fieldErrors.value = {}
+    await formRef.value?.validate()
+    if (form.amount == null || isNaN(Number(form.amount)) || Number(form.amount) <= 0) {
+      message.error('Amount must be a positive number'); return
+    }
+    const payload: any = {
+      ...form,
+      transaction_type: transactionType.value,
+      pay_type: transactionType.value === 'refund' ? 'refund' : form.pay_type,
+      credit_to_account: !!form.credit_to_account,
+      deduct_from_account: !!form.deduct_from_account
+    }
+    // Refund specific
+    if (transactionType.value === 'refund') {
+      Object.assign(payload, getRefundEntityDetails())
+      payload.mode = form.refund_direction === 'incoming' ? form.mode_for_from : form.mode_for_to
+    }
+    if (editingId.value) {
+      await api.put(`/api/transactions/${editingId.value}`, payload)
+      message.success('Transaction updated')
+    } else {
+      await api.post(`/api/transactions/${transactionType.value}`, payload)
+      message.success('Transaction added')
+    }
+    modalVisible.value = false; editingId.value = null; await fetchTransactions()
+  } catch (e: any) {
+    if (e?.response?.data?.field_errors) fieldErrors.value = e.response.data.field_errors
+    else message.error(e?.response?.data?.error || 'Failed to submit transaction')
+  }
+}
+const handleDelete = async (id: number) => {
+  if (!confirm('Are you sure you want to delete this transaction?')) return
+  try { await api.delete(`/api/transactions/${id}`); message.success('Transaction deleted'); await fetchTransactions() }
+  catch (e: any) { message.error(e?.response?.data?.error || 'Failed to delete transaction') }
+}
+const exportExcel = async () => {
+  try {
+    const params: any = { export: 'excel', transaction_type: transactionType.value }
+    if (dateRange.value) {
+      params.start_date = new Date(dateRange.value[0]).toISOString().split('T')[0]
+      params.end_date = new Date(dateRange.value[1]).toISOString().split('T')[0]
+    }
+    const response = await api.get(`/api/transactions/${transactionType.value}`, { params, responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${transactionType.value}_transactions_${new Date().toISOString().slice(0,10)}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  } catch (e) {
+    message.error('Excel export failed: ' + (e.response?.data?.error || e.message))
+  }
+}
+const exportPDF = async () => {
+  try {
+    const params: any = { export: 'pdf', transaction_type: transactionType.value }
+    if (dateRange.value) {
+      params.start_date = new Date(dateRange.value[0]).toISOString().split('T')[0]
+      params.end_date = new Date(dateRange.value[1]).toISOString().split('T')[0]
+    }
+    const response = await api.get(`/api/transactions/${transactionType.value}`, { params, responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${transactionType.value}_transactions_${new Date().toISOString().slice(0,10)}.pdf`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  } catch (e) {
+    message.error('PDF export failed: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+// ---- DATA-TABLE ----
+const columns = computed(() => {
+  const baseColumns = [
+    { title: 'Ref No', key: 'ref_no' },
+    { title: 'Date', key: 'date', render: row => new Date(row.date).toLocaleString() },
+    { title: 'Entity Type', key: 'entity_type', render: row => toSentenceCase(row.entity_type || '') },
+    { title: 'Entity Name', key: 'entity_name' },
+    { title: 'Particular', key: 'particular_name' },
+    {
+      title: 'Payment Type',
+      key: 'pay_type',
+      render: row => row.pay_type ? toSentenceCase(row.pay_type) : ''
+    },
+    { title: 'Mode', key: 'mode', render: row => toSentenceCase(row.mode || '') },
+    { title: 'Amount', key: 'amount' },
+    { title: 'Description', key: 'description' }
+  ]
+  const actions = {
+    title: 'Actions',
+    key: 'actions',
+    render: (row: any) =>
+      h(NSpace, { size: 8 }, () => [
+        h(NButton, { size: 'small', type: 'primary', onClick: () => openAddModal(row) }, { default: () => 'Edit' }),
+        h(NButton, { size: 'small', type: 'error', onClick: () => handleDelete(row.id) }, { default: () => 'Delete' })
+      ])
+  }
+  return [...baseColumns, actions]
+})
+
+// ---- WATCHERS ----
+watch(
+  () => route.query.type,
+  async (type) => {
+    if (typeof type === 'string' && tabs.includes(type))
+      transactionType.value = type as any
+    await fetchSchema()
+    await fetchTransactions()
+  }, { immediate: true }
+)
+watch(() => form.refund_direction, (newDir) => {
+  if (transactionType.value === 'refund') {
+    form.mode_for_from = null
+    form.mode_for_to = null
+    form.credit_to_account = false
+    form.deduct_from_account = false
+    if (newDir === 'incoming' && form.from_entity_type) loadEntities(form.from_entity_type)
+    else if (newDir === 'outgoing' && form.to_entity_type) loadEntities(form.to_entity_type)
+  }
+})
+watch(() => [form.from_entity_type, form.to_entity_type], () => {
+  if (transactionType.value === 'refund') {
+    nextTick(() => { if (form.refund_direction === 'incoming' && form.mode_for_from) form.mode_for_from = form.mode_for_from })
+  }
+})
+watch(dateRange, fetchTransactions)
+
+// ---- LIFECYCLE ----
+onMounted(async () => {
+  dateRange.value = defaultDateRange.value
+  const typeParam = route.query.type as string
+  transactionType.value = tabs.includes(typeParam) ? typeParam as any : 'payment'
+  await fetchSchema()
+  await fetchTransactions()
+  await loadParticulars()
+  if (form.entity_type && form.entity_type !== 'others') await loadEntities(form.entity_type)
+})
+</script>
+
+
+<style scoped lang="scss">
+@use '@/styles/theme' as *;
+
+</style>
