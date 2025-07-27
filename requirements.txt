@@ -1,0 +1,29 @@
+Flask
+flask-restful
+flask-mail
+flask-bcrypt
+flask-jwt-extended
+flask-login
+flask-cors
+flask-sqlalchemy
+celery
+jinja2
+logging
+jsonschema
+chart.js 
+vue-chartjs
+xlsx 
+jspdf@2.5.1 
+jspdf-autotable@3.5.28
+fpdf 
+pandas 
+xlsxwriter
+
+npm install axios pinia vue-router postcss autoprefixer
+npm install naive-ui axios pinia vue-router
+npm install naive-ui axios jwt-decode
+npm install @vicons/ionicons5
+npm install dayjs
+npm install echarts
+
+npm install axios pinia vue-router postcss autoprefixer naive-ui jwt-decode @vicons/ionicons5 dayjs echarts chart.js vue-chartjs jspdf@2.5.1 jspdf-autotable@3.5.28 xlsx
